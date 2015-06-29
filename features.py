@@ -153,12 +153,65 @@ def activity_filtered(enroll_df=None, log_df=None, dt_df=None):
         tail_df.columns = ['enrollment_id', 'total_activity_tail_%s' % d]
         tail_df
         ndf = pd.merge(ndf, tail_df, on='enrollment_id', how='left').fillna(0)
-        
+
         ndf['total_activity_diff_%s' % d] = ndf['total_activity_tail_%s' % d] - ndf['total_activity_top_%s' % d]
     #ndf = ndf.reset_index()
     return ndf
 
+def action_dow(enroll_df=None, log_df=None, dt_df=None):
+    """
+    Enrollment Level Feature - III
 
+    action_dow
+    Return DataFrame
+    Key: enrollment_id
+    """
+    ndf = pd.DataFrame()
+    ndf['enrollment_id'] = enroll_df['enrollment_id']
+    ndf['total'] = log_df.groupby('enrollment_id').event.count()
+    for dow in log_df.action_dow.unique():
+        ndf['dow_%s' % dow] = log_df[log_df['action_dow'] == dow].groupby('enrollment_id').event.count() / ndf['total']
+    ndf = ndf.fillna(0)
+    ndf.drop('total', inplace=True, axis=1)
+    return ndf
+
+def dummy_course_id(enroll_df=None, log_df=None, dt_df=None):    
+    return pd.core.reshape.get_dummies(enroll_df.course_id.values.tolist())
+
+# def user_drop_rate(enroll_df=None, log_df=None, dt_df=None, df_truth=None):        
+#     user_drop_rate = pd.DataFrame(enroll_df.join(df_truth[1]).groupby('username')[1].sum()/ enroll_df.join(df_truth[1]).groupby('username')[1].count()).reset_index()    
+#     user_drop_rate.columns = ['username', 'user_drop_rate']    
+#     return user_drop_rate
+
+def course_drop_rate(enroll_df=None, log_df=None, dt_df=None, df_truth=None):        
+    course_drop_rate = pd.DataFrame(enroll_df.join(df_truth[1]).groupby('course_id')[1].sum()/ enroll_df.join(df_truth[1]).groupby('course_id')[1].count()).reset_index()
+    course_drop_rate.columns = ['course_id', 'course_drop_rate']
+    return course_drop_rate
+
+
+def k_mean_user_df(enroll_df=None, log_df=None, dt_df=None):
+    from sklearn.cluster import KMeans
+    big_df = pd.merge(enroll_df, log_df, on='enrollment_id', how='left')
+    big_df = pd.merge(big_df, dt_df, on='course_id', how='left')
+    big_df['before_end'] = (big_df['to'] - big_df['time']).astype('m8[D]')
+    big_df['after_start'] = (big_df['time'] - big_df['from']).astype('m8[D]')
+    ndf = pd.DataFrame()
+    ndf['enrollment_id'] = big_df['enrollment_id']
+    ndf = ndf.join(pd.core.reshape.get_dummies(big_df['after_start'].values.tolist()))
+    user_cluster_df = ndf.groupby('enrollment_id').sum()
+    return user_cluster_df
+    
+def train_kmean(user_cluster_df, enroll_df=None):
+    k_means = KMeans(init='k-means++', n_clusters=5, n_init=20)
+    k_means.fit(user_cluster_df.values)
+    k_means_labels = k_means.labels_
+    k_means_cluster_centers = k_means.cluster_centers_
+    k_means_labels_unique = np.unique(k_means_labels)
+    ndf = pd.DataFrame()
+    ndf['enrollment_id'] = enroll_df['enrollment_id']
+    ndf['kmean_labels'] = k_means_labels
+    return k_means, ndf
+    
 
 """
 Course Level Features
